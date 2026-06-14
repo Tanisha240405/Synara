@@ -3,13 +3,20 @@ import { db } from '@/lib/db';
 import { segments } from '@/lib/schema';
 import { desc, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function GET() {
-  const custQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers`);
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = session.user.id;
+
+  const custQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers WHERE user_id = ${userId}`);
   const custRows = Array.isArray(custQuery) ? custQuery : (custQuery.rows || []);
   const hasData = parseInt(String(custRows[0]?.count || '0')) > 0;
 
   const data = await db.select().from(segments)
+    .where(eq(segments.userId, userId))
     .orderBy(desc(segments.createdAt));
 
   // Refresh each segment's customer_count live so it reflects any customers
@@ -18,7 +25,7 @@ export async function GET() {
     try {
       const rawSql = seg.sqlWhere || '1=1';
       const countQuery = await db.execute(
-        sql`SELECT COUNT(*) as count FROM customers WHERE ${sql.raw(rawSql)}`
+        sql`SELECT COUNT(*) as count FROM customers WHERE user_id = ${userId} AND (${sql.raw(rawSql)})`
       );
       const countRows = Array.isArray(countQuery) ? countQuery : (countQuery.rows || []);
       const liveCount = parseInt(String(countRows[0]?.count || '0'));
@@ -43,12 +50,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = session.user.id;
+
   const body = await req.json();
   let actualCount = 0;
   
   try {
     const rawSql = body.sqlWhere || '1=1';
-    const countQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers WHERE ${sql.raw(rawSql)}`);
+    const countQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers WHERE user_id = ${userId} AND (${sql.raw(rawSql)})`);
     const countRows = Array.isArray(countQuery) ? countQuery : (countQuery.rows || []);
     actualCount = parseInt(String(countRows[0]?.count || '0'));
   } catch (e) {
@@ -61,6 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   const inserted = await db.insert(segments).values({
+    userId,
     name: body.name,
     naturalLanguageQuery: body.naturalLanguageQuery,
     filterJson: body.filterJson || {},

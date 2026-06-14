@@ -14,6 +14,7 @@ export const users = pgTable('users', {
 
 export const customers = pgTable('customers', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   email: text('email'),
   phone: text('phone'),
@@ -33,6 +34,7 @@ export const customers = pgTable('customers', {
 
 export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   customerId: uuid('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
   items: jsonb('items').notNull().default([]),
@@ -43,6 +45,7 @@ export const orders = pgTable('orders', {
 
 export const products = pgTable('products', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   category: text('category').notNull(),
   price: decimal('price', { precision: 10, scale: 2 }).notNull(),
@@ -54,6 +57,7 @@ export const products = pgTable('products', {
 
 export const segments = pgTable('segments', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   naturalLanguageQuery: text('natural_language_query'),
   filterJson: jsonb('filter_json').notNull().default({}),
@@ -68,6 +72,7 @@ export const segments = pgTable('segments', {
 
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   segmentId: uuid('segment_id').references(() => segments.id),
   productId: uuid('product_id').references(() => products.id),

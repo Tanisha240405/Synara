@@ -10,7 +10,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const id = params.id;
-  await db.delete(segments).where(eq(segments.id, id));
+  const userId = session.user.id as string;
+  await db.delete(segments).where(sql`id = ${id} AND user_id = ${userId}`);
 
   return NextResponse.json({ success: true });
 }

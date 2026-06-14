@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { campaigns, campaignStats, customers, segments, messages } from '@/lib/schema';
 import { desc, eq, sql } from 'drizzle-orm';
@@ -6,11 +8,16 @@ import { desc, eq, sql } from 'drizzle-orm';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = session.user.id;
+
   const camps = await db.select({
     campaign: campaigns,
     stats: campaignStats
   })
   .from(campaigns)
+  .where(eq(campaigns.userId, userId))
   .leftJoin(campaignStats, eq(campaigns.id, campaignStats.campaignId))
   .orderBy(desc(campaigns.createdAt));
   
@@ -18,8 +25,13 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = session.user.id;
+
   const body = await req.json();
   const inserted = await db.insert(campaigns).values({
+    userId,
     name: body.name,
     segmentId: body.segmentId,
     productId: body.productId || null,
@@ -35,7 +47,7 @@ export async function POST(req: NextRequest) {
   const [segment] = await db.select().from(segments).where(eq(segments.id, body.segmentId));
   let targets: any[] = [];
   if (segment && segment.sqlWhere) {
-    const rawSql = `SELECT id FROM customers WHERE ${segment.sqlWhere}`;
+    const rawSql = `SELECT id FROM customers WHERE user_id = '${userId}' AND (${segment.sqlWhere})`;
     try {
       const result = await db.execute(sql.raw(rawSql));
       targets = Array.isArray(result) ? result : (result.rows || []);
@@ -46,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   // Fallback to all if no targets found or no segment
   if (targets.length === 0) {
-    targets = await db.select({ id: customers.id }).from(customers);
+    targets = await db.select({ id: customers.id }).from(customers).where(eq(customers.userId, userId));
   }
 
   // Create messages (recipients)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { campaigns, campaignStats, segments, products } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   .leftJoin(campaignStats, eq(campaigns.id, campaignStats.campaignId))
   .leftJoin(segments, eq(campaigns.segmentId, segments.id))
   .leftJoin(products, eq(campaigns.productId, products.id))
-  .where(eq(campaigns.id, id))
+  .where(sql`campaigns.id = ${id} AND campaigns.user_id = ${session.user.id}`)
   .limit(1);
 
   if (results.length === 0) {
@@ -53,9 +53,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const id = params.id;
   
   // First delete stats to avoid foreign key constraints
-  await db.delete(campaignStats).where(eq(campaignStats.campaignId, id));
+  await db.delete(campaignStats).where(sql`campaign_id = ${id} AND EXISTS (SELECT 1 FROM campaigns WHERE id = ${id} AND user_id = ${session.user.id})`);
   // Then delete the campaign itself
-  await db.delete(campaigns).where(eq(campaigns.id, id));
+  await db.delete(campaigns).where(sql`id = ${id} AND user_id = ${session.user.id}`);
 
   return NextResponse.json({ success: true });
 }

@@ -73,22 +73,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid industry segment required to generate data' }, { status: 400 });
     }
 
-    // 0. Clear existing mock data to prevent bloated mismatched values
-    await db.execute(sql`DELETE FROM events`);
-    await db.execute(sql`DELETE FROM messages`);
-    await db.execute(sql`DELETE FROM campaign_stats`);
-    await db.execute(sql`DELETE FROM campaigns WHERE is_mock_data = true`);
-    await db.execute(sql`DELETE FROM orders WHERE is_mock_data = true`);
-    await db.execute(sql`DELETE FROM customers WHERE is_mock_data = true`);
+    const userId = session.user.id as string;
+    
+    // 0. Clear existing mock data for THIS user
+    // Deleting campaigns cascades to messages, events, and campaign_stats.
+    await db.execute(sql`DELETE FROM campaigns WHERE is_mock_data = true AND user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM orders WHERE is_mock_data = true AND user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM customers WHERE is_mock_data = true AND user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM products WHERE is_mock_data = true AND user_id = ${userId}`);
 
     // 1. Fetch or Generate Products
     const productSeeds = INDUSTRY_PRODUCTS[industrySegment as keyof typeof INDUSTRY_PRODUCTS];
-    let generatedProducts = await db.select().from(products).where(eq(products.isMockData, true));
+    let generatedProducts = await db.select().from(products).where(sql`is_mock_data = true AND user_id = ${userId}`);
     
     if (generatedProducts.length === 0) {
       for (const p of productSeeds) {
         const [{ insertedId }] = await db.insert(products).values({
           id: faker.string.uuid(),
+          userId,
           name: p.name,
           category: p.category,
           price: p.price,
@@ -111,6 +113,7 @@ export async function POST(req: NextRequest) {
       
       const customer = {
         id: faker.string.uuid(),
+        userId,
         name: faker.person.fullName(),
         email: faker.internet.email(),
         phone: faker.phone.number({ style: 'national' }),
@@ -136,6 +139,7 @@ export async function POST(req: NextRequest) {
       
       orderBatch.push({
         id: faker.string.uuid(),
+        userId,
         customerId: customer.id,
         amount,
         items: [{ productId: product.id, name: product.name, quantity: qty, price: product.price }],
@@ -158,6 +162,7 @@ export async function POST(req: NextRequest) {
       
       const campaign = {
         id: faker.string.uuid(),
+        userId,
         name: cName,
         channel: faker.helpers.arrayElement(['whatsapp', 'email', 'sms']),
         messageTemplate: `Hi {first_name}, check out our new ${cName}! Use code ${faker.string.alphanumeric(6).toUpperCase()} for 20% off.`,

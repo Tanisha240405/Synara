@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,7 +10,13 @@ export const fetchCache = 'force-no-store';
 
 export async function GET() {
   try {
-    const custQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers`);
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ hasData: false, error: 'Unauthorized', totalSent: 0, totalDelivered: 0, avgOpenRate: 0, totalConversions: 0, activeCampaigns: 0, predictedLtv: 0, currentLtv: 0, churnRate: 0, aov: 0, revenue: 0 }, { status: 401 });
+    }
+    const userId = session.user.id;
+
+    const custQuery = await db.execute(sql`SELECT COUNT(*) as count FROM customers WHERE user_id = ${userId}`);
     const custRows = Array.isArray(custQuery) ? custQuery : (custQuery.rows || []);
     const customerCount = parseInt(String(custRows[0]?.count ?? 0));
     const hasData = customerCount > 0;
@@ -22,60 +30,57 @@ export async function GET() {
       });
     }
 
-    // Pull stats from BOTH sources and take whichever has more data.
-    // Campaigns sent via the in-process simulator write to campaign_stats directly.
-    // Campaigns sent via the receipt API write to messages. We use the larger
-    // totalSent as the authoritative source so all campaigns show in the dashboard.
-    const [msgStatsQuery, csStatsQuery, revQuery, campsQuery, ordersQuery] = await Promise.all([
+    const [csStatsQuery, campsQuery, ordersQuery, recentOrdersQuery, topProductsQuery] = await Promise.all([
       db.execute(sql`
         SELECT 
-          COUNT(*)::int AS "totalSent",
-          SUM(CASE WHEN status IN ('delivered', 'opened', 'clicked', 'order_placed', 'converted') THEN 1 ELSE 0 END)::int AS "totalDelivered",
-          SUM(CASE WHEN status IN ('opened', 'clicked', 'order_placed', 'converted') THEN 1 ELSE 0 END)::int AS "totalOpened",
-          SUM(CASE WHEN status IN ('clicked', 'order_placed', 'converted') THEN 1 ELSE 0 END)::int AS "totalClicked",
-          SUM(CASE WHEN status IN ('order_placed', 'converted') THEN 1 ELSE 0 END)::int AS "totalConversions"
-        FROM messages
+          COALESCE(SUM(cs.total_sent), 0)::int         AS "totalSent",
+          COALESCE(SUM(cs.total_delivered), 0)::int    AS "totalDelivered",
+          COALESCE(SUM(cs.total_opened), 0)::int       AS "totalOpened",
+          COALESCE(SUM(cs.total_clicked), 0)::int      AS "totalClicked",
+          COALESCE(SUM(cs.total_order_placed), 0)::int AS "totalConversions",
+          COALESCE(SUM(cs.revenue_attributed), 0)      AS "revenue"
+        FROM campaign_stats cs
+        JOIN campaigns c ON c.id = cs.campaign_id
+        WHERE c.user_id = ${userId}
       `),
       db.execute(sql`
-        SELECT 
-          COALESCE(SUM(total_sent), 0)::int         AS "totalSent",
-          COALESCE(SUM(total_delivered), 0)::int    AS "totalDelivered",
-          COALESCE(SUM(total_opened), 0)::int       AS "totalOpened",
-          COALESCE(SUM(total_clicked), 0)::int      AS "totalClicked",
-          COALESCE(SUM(total_order_placed), 0)::int AS "totalConversions"
-        FROM campaign_stats
-      `),
-      db.execute(sql`
-        SELECT COALESCE(SUM(revenue_attributed), 0) AS "revenue" FROM campaign_stats
-      `),
-      db.execute(sql`
-        SELECT COUNT(*)::int as active FROM campaigns WHERE status IN ('sending', 'scheduled')
+        SELECT COUNT(*)::int as active FROM campaigns WHERE status IN ('sending', 'scheduled') AND user_id = ${userId}
       `),
       db.execute(sql`
         SELECT 
           COUNT(*)::int             AS "totalOrders", 
           COALESCE(SUM(amount), 0)  AS "totalRevenue" 
-        FROM orders
+        FROM orders WHERE user_id = ${userId}
+      `),
+      db.execute(sql`
+        SELECT COUNT(DISTINCT customer_id)::int AS "activeCust" 
+        FROM orders WHERE ordered_at > NOW() - INTERVAL '30 days' AND user_id = ${userId}
+      `),
+      db.execute(sql`
+        SELECT 
+          p.id, p.name, p.price, p.category,
+          COUNT(DISTINCT c.id)::int                    AS "campaignCount",
+          COALESCE(SUM(cs.total_sent), 0)::int         AS "totalSent",
+          COALESCE(SUM(cs.total_order_placed), 0)::int AS "totalConversions"
+        FROM products p
+        LEFT JOIN campaigns c ON p.id = c.product_id AND c.user_id = ${userId}
+        LEFT JOIN campaign_stats cs ON c.id = cs.campaign_id
+        WHERE p.user_id = ${userId} OR p.user_id IS NULL
+        GROUP BY p.id, p.name, p.price, p.category
+        ORDER BY "totalConversions" DESC, p.price DESC
+        LIMIT 5
       `)
     ]);
     
-    const msgRows = Array.isArray(msgStatsQuery) ? msgStatsQuery : (msgStatsQuery.rows || []);
-    const msgRow  = msgRows[0] || {};
     const csRows  = Array.isArray(csStatsQuery) ? csStatsQuery : (csStatsQuery.rows || []);
     const csRow   = csRows[0] || {};
-    const revRows = Array.isArray(revQuery) ? revQuery : (revQuery.rows || []);
 
-    // Use whichever source reports more sent messages
-    const msgSent = Number(msgRow.totalSent) || 0;
-    const csSent  = Number(csRow.totalSent)  || 0;
-    const useCS   = csSent > msgSent;
-
-    const totalSent        = Math.max(msgSent, csSent);
-    const totalDelivered   = useCS ? (Number(csRow.totalDelivered)   || 0) : (Number(msgRow.totalDelivered)   || 0);
-    const totalOpened      = useCS ? (Number(csRow.totalOpened)      || 0) : (Number(msgRow.totalOpened)      || 0);
-    const totalClicked     = useCS ? (Number(csRow.totalClicked)     || 0) : (Number(msgRow.totalClicked)     || 0);
-    const totalConversions = useCS ? (Number(csRow.totalConversions) || 0) : (Number(msgRow.totalConversions) || 0);
-    const revenue          = Number(revRows[0]?.revenue) || 0;
+    const totalSent        = Number(csRow.totalSent)  || 0;
+    const totalDelivered   = Number(csRow.totalDelivered)   || 0;
+    const totalOpened      = Number(csRow.totalOpened)      || 0;
+    const totalClicked     = Number(csRow.totalClicked)     || 0;
+    const totalConversions = Number(csRow.totalConversions) || 0;
+    const revenue          = Number(csRow.revenue) || 0;
     
     const ordersRows  = Array.isArray(ordersQuery) ? ordersQuery : (ordersQuery.rows || []);
     const ordersRow   = ordersRows[0] || {};
@@ -86,27 +91,10 @@ export async function GET() {
     const currentLtv   = customerCount > 0 ? Math.round(totalRevenue / customerCount) : 0;
     const predictedLtv = Math.round(currentLtv * 1.2);
 
-    const recentOrdersQuery = await db.execute(sql`
-      SELECT COUNT(DISTINCT customer_id)::int AS "activeCust" 
-      FROM orders WHERE ordered_at > NOW() - INTERVAL '30 days'
-    `);
     const recentRows  = Array.isArray(recentOrdersQuery) ? recentOrdersQuery : (recentOrdersQuery.rows || []);
     const activeCust  = Number(recentRows[0]?.activeCust) || 0;
     const churnRate   = customerCount > 0 ? (((customerCount - activeCust) / customerCount) * 100).toFixed(1) : '0';
 
-    const topProductsQuery = await db.execute(sql`
-      SELECT 
-        p.id, p.name, p.price, p.category,
-        COUNT(DISTINCT c.id)::int                    AS "campaignCount",
-        COALESCE(SUM(cs.total_sent), 0)::int         AS "totalSent",
-        COALESCE(SUM(cs.total_order_placed), 0)::int AS "totalConversions"
-      FROM products p
-      LEFT JOIN campaigns c ON p.id = c.product_id
-      LEFT JOIN campaign_stats cs ON c.id = cs.campaign_id
-      GROUP BY p.id, p.name, p.price, p.category
-      ORDER BY "totalConversions" DESC, p.price DESC
-      LIMIT 5
-    `);
     const topProducts = Array.isArray(topProductsQuery) ? topProductsQuery : (topProductsQuery.rows || []);
 
     const campsRows      = Array.isArray(campsQuery) ? campsQuery : (campsQuery.rows || []);

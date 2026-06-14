@@ -32,7 +32,7 @@ export const authOptions = {
         const existingUser = await db.select().from(users).where(eq(users.email, user.email!)).limit(1);
         if (!existingUser.length) {
           await db.insert(users).values({
-            id: crypto.randomUUID(),
+            id: user.id || crypto.randomUUID(),
             name: user.name || '',
             email: user.email!,
             image: user.image,

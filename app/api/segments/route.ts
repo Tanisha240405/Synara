@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { segments } from '@/lib/schema';
-import { desc } from 'drizzle-orm';
-
+import { desc, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 export async function GET() {
@@ -11,10 +10,36 @@ export async function GET() {
   const hasData = parseInt(String(custRows[0]?.count || '0')) > 0;
 
   const data = await db.select().from(segments)
-    .where(sql`customer_count > 0`)
     .orderBy(desc(segments.createdAt));
-  
-  return NextResponse.json({ segments: data, hasData });
+
+  // Refresh each segment's customer_count live so it reflects any customers
+  // added after the segment was originally created (mock-data, seed, imports).
+  const refreshed = await Promise.all(data.map(async (seg) => {
+    try {
+      const rawSql = seg.sqlWhere || '1=1';
+      const countQuery = await db.execute(
+        sql`SELECT COUNT(*) as count FROM customers WHERE ${sql.raw(rawSql)}`
+      );
+      const countRows = Array.isArray(countQuery) ? countQuery : (countQuery.rows || []);
+      const liveCount = parseInt(String(countRows[0]?.count || '0'));
+
+      // Persist updated count back to DB if it changed
+      if (liveCount !== seg.customerCount) {
+        await db.update(segments)
+          .set({ customerCount: liveCount })
+          .where(eq(segments.id, seg.id));
+      }
+      return { ...seg, customerCount: liveCount };
+    } catch {
+      // If the sqlWhere is invalid, return the stored count rather than crashing
+      return seg;
+    }
+  }));
+
+  // Only return segments with at least 1 customer
+  const visible = refreshed.filter(s => (s.customerCount ?? 0) > 0);
+
+  return NextResponse.json({ segments: visible, hasData });
 }
 
 export async function POST(req: NextRequest) {

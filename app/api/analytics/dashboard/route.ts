@@ -22,8 +22,11 @@ export async function GET() {
       });
     }
 
-    // Calculate exact real-time stats from messages table to ensure perfect alignment
-    const [msgStatsQuery, revQuery, campsQuery, ordersQuery] = await Promise.all([
+    // Pull stats from BOTH sources and take whichever has more data.
+    // Campaigns sent via the in-process simulator write to campaign_stats directly.
+    // Campaigns sent via the receipt API write to messages. We use the larger
+    // totalSent as the authoritative source so all campaigns show in the dashboard.
+    const [msgStatsQuery, csStatsQuery, revQuery, campsQuery, ordersQuery] = await Promise.all([
       db.execute(sql`
         SELECT 
           COUNT(*)::int AS "totalSent",
@@ -34,6 +37,15 @@ export async function GET() {
         FROM messages
       `),
       db.execute(sql`
+        SELECT 
+          COALESCE(SUM(total_sent), 0)::int         AS "totalSent",
+          COALESCE(SUM(total_delivered), 0)::int    AS "totalDelivered",
+          COALESCE(SUM(total_opened), 0)::int       AS "totalOpened",
+          COALESCE(SUM(total_clicked), 0)::int      AS "totalClicked",
+          COALESCE(SUM(total_order_placed), 0)::int AS "totalConversions"
+        FROM campaign_stats
+      `),
+      db.execute(sql`
         SELECT COALESCE(SUM(revenue_attributed), 0) AS "revenue" FROM campaign_stats
       `),
       db.execute(sql`
@@ -41,44 +53,51 @@ export async function GET() {
       `),
       db.execute(sql`
         SELECT 
-          COUNT(*)::int        AS "totalOrders", 
-          COALESCE(SUM(amount), 0) AS "totalRevenue" 
+          COUNT(*)::int             AS "totalOrders", 
+          COALESCE(SUM(amount), 0)  AS "totalRevenue" 
         FROM orders
       `)
     ]);
     
     const msgRows = Array.isArray(msgStatsQuery) ? msgStatsQuery : (msgStatsQuery.rows || []);
-    const row = msgRows[0] || {};
+    const msgRow  = msgRows[0] || {};
+    const csRows  = Array.isArray(csStatsQuery) ? csStatsQuery : (csStatsQuery.rows || []);
+    const csRow   = csRows[0] || {};
     const revRows = Array.isArray(revQuery) ? revQuery : (revQuery.rows || []);
 
-    const totalSent = Number(row.totalSent) || 0;
-    const totalDelivered = Number(row.totalDelivered) || 0;
-    const totalOpened = Number(row.totalOpened) || 0;
-    const totalClicked = Number(row.totalClicked) || 0;
-    const totalConversions = Number(row.totalConversions) || 0;
-    const revenue = Number(revRows[0]?.revenue) || 0;
-    
-    const ordersRows = Array.isArray(ordersQuery) ? ordersQuery : (ordersQuery.rows || []);
-    const ordersRow = ordersRows[0] || {};
-    const totalOrders = Number(ordersRow.totalOrders) || 0;
-    const totalRevenue = Number(ordersRow.totalRevenue) || 0;
-    const aov = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    // Use whichever source reports more sent messages
+    const msgSent = Number(msgRow.totalSent) || 0;
+    const csSent  = Number(csRow.totalSent)  || 0;
+    const useCS   = csSent > msgSent;
 
-    const currentLtv = customerCount > 0 ? Math.round(totalRevenue / customerCount) : 0;
+    const totalSent        = Math.max(msgSent, csSent);
+    const totalDelivered   = useCS ? (Number(csRow.totalDelivered)   || 0) : (Number(msgRow.totalDelivered)   || 0);
+    const totalOpened      = useCS ? (Number(csRow.totalOpened)      || 0) : (Number(msgRow.totalOpened)      || 0);
+    const totalClicked     = useCS ? (Number(csRow.totalClicked)     || 0) : (Number(msgRow.totalClicked)     || 0);
+    const totalConversions = useCS ? (Number(csRow.totalConversions) || 0) : (Number(msgRow.totalConversions) || 0);
+    const revenue          = Number(revRows[0]?.revenue) || 0;
+    
+    const ordersRows  = Array.isArray(ordersQuery) ? ordersQuery : (ordersQuery.rows || []);
+    const ordersRow   = ordersRows[0] || {};
+    const totalOrders = Number(ordersRow.totalOrders)  || 0;
+    const totalRevenue= Number(ordersRow.totalRevenue) || 0;
+    const aov         = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+    const currentLtv   = customerCount > 0 ? Math.round(totalRevenue / customerCount) : 0;
     const predictedLtv = Math.round(currentLtv * 1.2);
 
     const recentOrdersQuery = await db.execute(sql`
       SELECT COUNT(DISTINCT customer_id)::int AS "activeCust" 
       FROM orders WHERE ordered_at > NOW() - INTERVAL '30 days'
     `);
-    const recentRows = Array.isArray(recentOrdersQuery) ? recentOrdersQuery : (recentOrdersQuery.rows || []);
-    const activeCust = Number(recentRows[0]?.activeCust) || 0;
-    const churnRate = customerCount > 0 ? (((customerCount - activeCust) / customerCount) * 100).toFixed(1) : '0';
+    const recentRows  = Array.isArray(recentOrdersQuery) ? recentOrdersQuery : (recentOrdersQuery.rows || []);
+    const activeCust  = Number(recentRows[0]?.activeCust) || 0;
+    const churnRate   = customerCount > 0 ? (((customerCount - activeCust) / customerCount) * 100).toFixed(1) : '0';
 
     const topProductsQuery = await db.execute(sql`
       SELECT 
         p.id, p.name, p.price, p.category,
-        COUNT(DISTINCT c.id)::int        AS "campaignCount",
+        COUNT(DISTINCT c.id)::int                    AS "campaignCount",
         COALESCE(SUM(cs.total_sent), 0)::int         AS "totalSent",
         COALESCE(SUM(cs.total_order_placed), 0)::int AS "totalConversions"
       FROM products p
@@ -90,8 +109,8 @@ export async function GET() {
     `);
     const topProducts = Array.isArray(topProductsQuery) ? topProductsQuery : (topProductsQuery.rows || []);
 
-    const campsRows = Array.isArray(campsQuery) ? campsQuery : (campsQuery.rows || []);
-    const activeCampaigns = Number(campsRows[0]?.active) || 0;
+    const campsRows      = Array.isArray(campsQuery) ? campsQuery : (campsQuery.rows || []);
+    const activeCampaigns= Number(campsRows[0]?.active) || 0;
 
     return NextResponse.json({
       hasData: true,
@@ -99,9 +118,9 @@ export async function GET() {
       totalDelivered,
       totalOpened,
       totalClicked,
-      avgOpenRate: totalDelivered > 0 ? ((totalOpened / totalDelivered) * 100).toFixed(1) : '0',
-      clickThroughRate: totalOpened > 0 ? ((totalClicked / totalOpened) * 100).toFixed(1) : '0',
-      conversionRate: totalDelivered > 0 ? ((totalConversions / totalDelivered) * 100).toFixed(1) : '0',
+      avgOpenRate:       totalDelivered > 0 ? ((totalOpened      / totalDelivered) * 100).toFixed(1) : '0',
+      clickThroughRate:  totalOpened    > 0 ? ((totalClicked     / totalOpened)    * 100).toFixed(1) : '0',
+      conversionRate:    totalDelivered > 0 ? ((totalConversions / totalDelivered) * 100).toFixed(1) : '0',
       totalConversions,
       revenue,
       activeCampaigns,

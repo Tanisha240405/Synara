@@ -75,12 +75,8 @@ export async function POST(req: NextRequest) {
 
     const userId = session.user.id as string;
     
-    // 0. Clear existing mock data for THIS user
-    // Deleting campaigns cascades to messages, events, and campaign_stats.
-    await db.execute(sql`DELETE FROM campaigns WHERE is_mock_data = true AND user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM orders WHERE is_mock_data = true AND user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM customers WHERE is_mock_data = true AND user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM products WHERE is_mock_data = true AND user_id = ${userId}`);
+    // Existing mock data is no longer cleared here, allowing new mock data to stack
+    // Products are reused if they already exist for this user.
 
     // 1. Fetch or Generate Products
     const productSeeds = INDUSTRY_PRODUCTS[industrySegment as keyof typeof INDUSTRY_PRODUCTS];

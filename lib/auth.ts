@@ -43,7 +43,9 @@ export const authOptions = {
     },
     async jwt({ token, user, trigger, session }: any) {
       if (user) {
-        token.id = user.id;
+        // Fetch the actual database ID instead of using the Google Provider ID
+        const dbUser = await db.select().from(users).where(eq(users.email, user.email)).limit(1);
+        token.id = dbUser[0] ? dbUser[0].id : user.id;
         token.picture = user.image;
       }
       if (trigger === "update" && session?.image !== undefined) {

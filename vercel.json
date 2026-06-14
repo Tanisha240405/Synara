@@ -1,0 +1,13 @@
+{
+  "buildCommand": "npx drizzle-kit push && next build",
+  "framework": "nextjs",
+  "regions": ["sin1"],
+  "functions": {
+    "app/api/channel/send/route.ts": { "maxDuration": 60 },
+    "app/api/ai/chat/route.ts": { "maxDuration": 30 },
+    "app/api/ai/segment/route.ts": { "maxDuration": 30 },
+    "app/api/ai/segment-insight/route.ts": { "maxDuration": 30 },
+    "app/api/campaigns/[id]/send/route.ts": { "maxDuration": 60 },
+    "app/api/mock-data/route.ts": { "maxDuration": 60 }
+  }
+}

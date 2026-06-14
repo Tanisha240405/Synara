@@ -90,7 +90,7 @@ export const campaigns = pgTable('campaigns', {
 export const messages = pgTable('messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  customerId: uuid('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   channel: text('channel').notNull(),
   content: text('content').notNull(),
   status: text('status').default('queued'),
@@ -101,8 +101,8 @@ export const messages = pgTable('messages', {
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
   messageId: uuid('message_id').notNull().references(() => messages.id, { onDelete: 'cascade' }),
-  campaignId: uuid('campaign_id').notNull().references(() => campaigns.id),
-  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  customerId: uuid('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
   eventType: text('event_type').notNull(),
   channel: text('channel').notNull(),
   metadata: jsonb('metadata').default({}),

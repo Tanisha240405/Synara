@@ -7,45 +7,57 @@ import { eq, sql } from 'drizzle-orm';
 import { fakerEN_IN as faker } from '@faker-js/faker';
 
 const INDUSTRY_PRODUCTS = {
-  'apparel': [
+  'E-Commerce & Retail': [
+    { name: 'Wireless Earbuds', category: 'Electronics', price: '2499' },
     { name: 'Cotton T-Shirt', category: 'Apparel', price: '799' },
+    { name: 'Smart Watch', category: 'Electronics', price: '4999' },
     { name: 'Running Shoes', category: 'Footwear', price: '2999' },
     { name: 'Denim Jeans', category: 'Apparel', price: '1499' },
-    { name: 'Summer Dress', category: 'Apparel', price: '1999' },
-    { name: 'Leather Jacket', category: 'Apparel', price: '4999' },
-    { name: 'Sneakers', category: 'Footwear', price: '3499' },
+    { name: 'Bluetooth Speaker', category: 'Electronics', price: '3499' },
+    { name: 'Yoga Mat', category: 'Fitness', price: '899' },
+    { name: 'Coffee Maker', category: 'Home Goods', price: '5499' },
     { name: 'Backpack', category: 'Accessories', price: '1299' },
+    { name: 'Desk Lamp', category: 'Home Goods', price: '999' },
   ],
-  'beauty': [
-    { name: 'Matte Lipstick', category: 'Makeup', price: '499' },
-    { name: 'Hydrating Serum', category: 'Skincare', price: '899' },
-    { name: 'Vitamin C Cream', category: 'Skincare', price: '699' },
-    { name: 'Foundation', category: 'Makeup', price: '1200' },
-    { name: 'Body Lotion', category: 'Body Care', price: '350' },
-    { name: 'Sunscreen SPF 50', category: 'Skincare', price: '450' },
+  'Travel & Hospitality': [
+    { name: 'Goa Weekend Package', category: 'Package', price: '15000' },
+    { name: 'Flight: DEL to BOM', category: 'Flight', price: '5500' },
+    { name: 'Luxury Resort Stay', category: 'Hotel', price: '12000' },
+    { name: 'Flight: BLR to DEL', category: 'Flight', price: '6500' },
+    { name: 'Manali Trekking Package', category: 'Package', price: '8000' },
+    { name: 'Boutique Hotel Stay', category: 'Hotel', price: '4500' },
+    { name: 'Kerala Houseboat', category: 'Package', price: '18000' },
+    { name: 'Flight: CCU to MAA', category: 'Flight', price: '4800' },
   ],
-  'electronics': [
-    { name: 'Wireless Earbuds', category: 'Audio', price: '2499' },
-    { name: 'Smart Watch', category: 'Wearables', price: '4999' },
-    { name: 'Bluetooth Speaker', category: 'Audio', price: '3499' },
-    { name: 'Power Bank 10000mAh', category: 'Accessories', price: '999' },
-    { name: 'Fast Charger 65W', category: 'Accessories', price: '1499' },
-    { name: 'Gaming Mouse', category: 'Peripherals', price: '1299' },
+  'FinTech & Banking': [
+    { name: 'Premium Savings Account', category: 'Account', price: '0' },
+    { name: 'Platinum Credit Card', category: 'Credit Card', price: '1500' },
+    { name: 'Personal Loan', category: 'Loan', price: '100000' },
+    { name: 'Mutual Fund SIP', category: 'Investment', price: '5000' },
+    { name: 'Travel Forex Card', category: 'Card', price: '200' },
+    { name: 'Home Loan', category: 'Loan', price: '5000000' },
+    { name: 'Fixed Deposit', category: 'Investment', price: '100000' },
   ],
-  'fmcg': [
+  'Healthcare & Wellness': [
+    { name: 'Full Body Checkup', category: 'Lab Test', price: '2999' },
+    { name: 'General Consultation', category: 'Consultation', price: '500' },
+    { name: 'Diet Plan Membership', category: 'Membership', price: '1499' },
+    { name: 'Dental Cleaning', category: 'Service', price: '999' },
+    { name: 'Annual Wellness Plan', category: 'Membership', price: '4999' },
+    { name: 'Physiotherapy Session', category: 'Service', price: '800' },
+    { name: 'Vitamin B12 Test', category: 'Lab Test', price: '400' },
+  ],
+  'FMCG & Grocery': [
     { name: 'Organic Green Tea', category: 'Beverages', price: '250' },
     { name: 'Whole Wheat Bread', category: 'Bakery', price: '50' },
     { name: 'Almond Milk 1L', category: 'Dairy', price: '300' },
     { name: 'Mixed Nuts 500g', category: 'Snacks', price: '650' },
     { name: 'Laundry Detergent 2kg', category: 'Household', price: '450' },
     { name: 'Olive Oil 1L', category: 'Pantry', price: '850' },
-  ],
-  'other': [
-    { name: 'Desk Lamp', category: 'Home Goods', price: '999' },
-    { name: 'Yoga Mat', category: 'Fitness', price: '899' },
-    { name: 'Coffee Maker', category: 'Home Goods', price: '5499' },
-    { name: 'Water Bottle', category: 'Accessories', price: '499' },
-    { name: 'Notebook Set', category: 'Stationery', price: '299' },
+    { name: 'Fresh Apples 1kg', category: 'Produce', price: '200' },
+    { name: 'Oats 1kg', category: 'Pantry', price: '180' },
+    { name: 'Dishwash Gel', category: 'Household', price: '150' },
+    { name: 'Dark Chocolate', category: 'Snacks', price: '120' },
   ],
 };
 

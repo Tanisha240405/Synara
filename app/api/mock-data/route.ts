@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Fetch or Generate Products
     const productSeeds = INDUSTRY_PRODUCTS[industrySegment as keyof typeof INDUSTRY_PRODUCTS];
-    let generatedProducts = await db.select().from(products).where(sql`is_mock_data = true AND user_id = ${userId}`);
+    let generatedProducts = await db.select().from(products).where(sql`is_mock_data = true AND user_id = ${userId} AND industry_segment = ${industrySegment}`);
     
     if (generatedProducts.length === 0) {
       for (const p of productSeeds) {

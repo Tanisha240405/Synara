@@ -134,6 +134,7 @@ export const aiCallLogs = pgTable('ai_call_logs', {
 
 export const autopilotSuggestions = pgTable('autopilot_suggestions', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   suggestions: jsonb('suggestions').notNull(),
   generatedAt: timestamp('generated_at').notNull().defaultNow(),
   triggeredBy: text('triggered_by').default('auto'),

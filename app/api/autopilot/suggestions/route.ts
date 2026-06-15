@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { autopilotSuggestions } from '@/lib/schema';
 import { groq } from '@/lib/groq';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, and } from 'drizzle-orm';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,11 +13,16 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const forceRefresh = searchParams.get('refresh') === 'true';
 
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = session.user.id;
+
     // 1. Check Cache First
     if (!forceRefresh) {
       const cacheQuery = await db
         .select()
         .from(autopilotSuggestions)
+        .where(eq(autopilotSuggestions.userId, userId))
         .orderBy(sql`${autopilotSuggestions.generatedAt} DESC`)
         .limit(1);
 
@@ -37,14 +44,15 @@ export async function GET(req: Request) {
     // 2. Fetch Aggregated Data
     const dataQuery = await db.execute(sql`
       WITH
-      TotalCust AS (SELECT COUNT(*) AS total_customers FROM customers),
-      RecentCamps AS (SELECT COUNT(*) AS recent_campaigns FROM campaigns WHERE created_at > NOW() - INTERVAL '30 days'),
-      SingleBuyers AS (SELECT COUNT(*) AS single_buyers FROM customers WHERE total_orders = 1 AND created_at < NOW() - INTERVAL '45 days'),
+      TotalCust AS (SELECT COUNT(*) AS total_customers FROM customers WHERE user_id = ${userId}),
+      RecentCamps AS (SELECT COUNT(*) AS recent_campaigns FROM campaigns WHERE created_at > NOW() - INTERVAL '30 days' AND user_id = ${userId}),
+      SingleBuyers AS (SELECT COUNT(*) AS single_buyers FROM customers WHERE total_orders = 1 AND created_at < NOW() - INTERVAL '45 days' AND user_id = ${userId}),
       AvgOrders AS (
         SELECT 
           tier,
           ROUND(AVG(total_spend / GREATEST(total_orders, 1))) AS avg_order_value
         FROM customers
+        WHERE user_id = ${userId}
         GROUP BY tier
       )
       SELECT 
@@ -65,7 +73,7 @@ export async function GET(req: Request) {
                 ELSE '30d' END AS tier_days,
               COUNT(*) AS count
             FROM customers
-            WHERE last_purchase_at < NOW() - INTERVAL '30 days'
+            WHERE last_purchase_at < NOW() - INTERVAL '30 days' AND user_id = ${userId}
             GROUP BY 1
           ) t
         ) AS tier_inactivity
@@ -144,6 +152,7 @@ Return this exact JSON structure:
 
     // 4. Cache to DB
     const inserted = await db.insert(autopilotSuggestions).values({
+      userId,
       suggestions: parsed.suggestions,
       triggeredBy: forceRefresh ? 'manual_refresh' : 'auto',
       needsRefresh: false
@@ -151,7 +160,7 @@ Return this exact JSON structure:
 
     // Reset needsRefresh on older records just to be clean
     if (inserted[0]) {
-       await db.execute(sql`UPDATE autopilot_suggestions SET needs_refresh = false WHERE id != ${inserted[0].id}`);
+       await db.execute(sql`UPDATE autopilot_suggestions SET needs_refresh = false WHERE id != ${inserted[0].id} AND user_id = ${userId}`);
     }
 
     return NextResponse.json({

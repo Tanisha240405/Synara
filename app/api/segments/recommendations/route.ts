@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 import { aiChat } from '@/lib/ai/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,21 +11,26 @@ export const fetchCache = 'force-no-store';
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) return NextResponse.json({ recommendations: [] }, { status: 401 });
+    const userId = session.user.id;
+
     // Get quick stats to feed the AI
     const statsQuery = await db.execute(sql`
       SELECT 
         COUNT(*) as total_users,
         AVG(total_orders) as avg_orders
       FROM customers
+      WHERE user_id = ${userId}
     `);
     
     const statsRows = Array.isArray(statsQuery) ? statsQuery : (statsQuery.rows || []);
     const stats = statsRows[0] || { total_users: 0, avg_orders: 0 };
     
     const [cityQuery, tierQuery, channelQuery] = await Promise.all([
-      db.execute(sql`SELECT city, COUNT(*) as count FROM customers WHERE city IS NOT NULL GROUP BY city ORDER BY count DESC LIMIT 3`),
-      db.execute(sql`SELECT tier, COUNT(*) as count FROM customers WHERE tier IS NOT NULL GROUP BY tier ORDER BY count DESC LIMIT 2`),
-      db.execute(sql`SELECT channel_preference as channel, COUNT(*) as count FROM customers WHERE channel_preference IS NOT NULL GROUP BY channel_preference ORDER BY count DESC LIMIT 2`)
+      db.execute(sql`SELECT city, COUNT(*) as count FROM customers WHERE city IS NOT NULL AND user_id = ${userId} GROUP BY city ORDER BY count DESC LIMIT 3`),
+      db.execute(sql`SELECT tier, COUNT(*) as count FROM customers WHERE tier IS NOT NULL AND user_id = ${userId} GROUP BY tier ORDER BY count DESC LIMIT 2`),
+      db.execute(sql`SELECT channel_preference as channel, COUNT(*) as count FROM customers WHERE channel_preference IS NOT NULL AND user_id = ${userId} GROUP BY channel_preference ORDER BY count DESC LIMIT 2`)
     ]);
 
     const getValues = (query: any, key: string) => (Array.isArray(query) ? query : query.rows || []).map((r: Record<string, unknown>) => r[key]).join(', ');

@@ -55,7 +55,20 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const dbUser = await db.select({ industrySegment: users.industrySegment }).from(users).where(eq(users.email, session.user.email)).limit(1);
-    const industrySegment = dbUser[0]?.industrySegment;
+    let industrySegment = dbUser[0]?.industrySegment;
+
+    // Safety fallback: if their DB hasn't been updated yet, dynamically map back to generic keys
+    const fallbackMap: Record<string, string> = {
+      'E-Commerce & Retail': 'apparel',
+      'Travel & Hospitality': 'other',
+      'FinTech & Banking': 'electronics',
+      'Healthcare & Wellness': 'beauty',
+      'FMCG & Grocery': 'fmcg'
+    };
+
+    if (industrySegment && fallbackMap[industrySegment]) {
+      industrySegment = fallbackMap[industrySegment];
+    }
 
     if (!industrySegment || !INDUSTRY_PRODUCTS[industrySegment as keyof typeof INDUSTRY_PRODUCTS]) {
       return NextResponse.json({ error: 'Valid industry segment required to generate data' }, { status: 400 });

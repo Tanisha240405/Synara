@@ -346,11 +346,11 @@ export default function Login() {
                       <label className="font-label-xs text-label-xs uppercase tracking-widest text-on-surface-variant ml-xs group-focus-within:text-primary transition-colors">Industry</label>
                       <select required value={industrySegment} onChange={e=>setIndustrySegment(e.target.value)} className="input-dark w-full h-11 px-md rounded-lg text-body-md text-on-surface appearance-none cursor-pointer">
                         <option value="" disabled>Select Industry</option>
-                        <option value="E-Commerce & Retail">E-Commerce & Retail</option>
-                        <option value="Travel & Hospitality">Travel & Hospitality</option>
-                        <option value="FinTech & Banking">FinTech & Banking</option>
-                        <option value="Healthcare & Wellness">Healthcare & Wellness</option>
-                        <option value="FMCG & Grocery">FMCG & Grocery</option>
+                        <option value="apparel">Apparel & Fashion</option>
+                        <option value="beauty">Beauty & Cosmetics</option>
+                        <option value="electronics">Consumer Electronics</option>
+                        <option value="fmcg">FMCG / Grocery</option>
+                        <option value="other">Other</option>
                       </select>
                     </div>
                   </div>

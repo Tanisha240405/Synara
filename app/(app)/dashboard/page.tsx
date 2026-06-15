@@ -24,6 +24,12 @@ export default function Dashboard() {
     revalidateOnMount: true,
   });
   const campaigns = campaignsData?.campaigns || [];
+  
+  const { data: aiInsight } = useSWR(campaigns.some((c: any) => c.status === 'sending' || c.status === 'completed') ? '/api/ai/campaign-insight' : null, fetcher, {
+    revalidateOnMount: true,
+    refreshInterval: 10000,
+  });
+
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   const handleDeleteCampaign = async (id: string) => {
@@ -38,7 +44,11 @@ export default function Dashboard() {
   };
 
   const handleApplyRecommendation = () => {
-    addNotification({ title: 'Recommendation Applied', message: 'Budget shifted to SMS successfully.' });
+    if (aiInsight?.successMessage) {
+      addNotification({ title: 'Recommendation Applied', message: aiInsight.successMessage });
+    } else {
+      addNotification({ title: 'Recommendation Applied', message: 'Budget shifted successfully.' });
+    }
     setShowInsight(false);
   };
 
@@ -323,18 +333,20 @@ export default function Dashboard() {
             </div>
 
             {/* AI Insight Section */}
-            {showInsight && (
-              <div className="glass-panel p-lg rounded-xl flex items-center gap-lg border-l-4 border-l-primary relative overflow-hidden mt-6">
+            {showInsight && aiInsight?.insight && (
+              <div className="glass-panel p-lg rounded-xl flex items-center gap-lg border-l-4 border-l-primary relative overflow-hidden mt-6 animate-in slide-in-from-bottom-4">
                 <div className="absolute right-0 top-0 w-1/3 h-full opacity-10 pointer-events-none bg-gradient-to-r from-transparent to-primary"></div>
                 <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0 z-10">
                   <span className="material-symbols-outlined text-primary text-3xl">auto_awesome</span>
                 </div>
                 <div className="flex-1 z-10">
                   <h4 className="font-headline-md text-headline-md text-primary">AI Optimization Opportunity</h4>
-                  <p className="font-body-md text-on-surface-variant mt-xs">Your "{campaigns.filter((c: any) => c.status !== 'draft')[0]?.name || 'Recent'}" campaign is seeing a 40% higher engagement rate on SMS compared to Email. I suggest shifting 20% of your remaining budget to SMS for the final 24 hours.</p>
+                  <p className="font-body-md text-on-surface-variant mt-xs">{aiInsight.insight}</p>
                 </div>
-                <div className="flex items-center gap-md z-10">
-                  <button onClick={handleApplyRecommendation} className="px-md py-sm bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all">Apply Recommendation</button>
+                <div className="flex items-center gap-md z-10 shrink-0">
+                  <button onClick={handleApplyRecommendation} className="px-md py-sm bg-primary text-on-primary font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all">
+                    {aiInsight.actionText || 'Apply Recommendation'}
+                  </button>
                   <button onClick={() => setShowInsight(false)} className="text-on-surface-variant hover:text-on-surface transition-colors">Dismiss</button>
                 </div>
               </div>

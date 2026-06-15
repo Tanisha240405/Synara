@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const segmentArr = await db.select().from(segments).where(eq(segments.id, campaign.segmentId));
       const segment = segmentArr[0];
       if (segment && segment.sqlWhere) {
-        matchedCustomers = await db.execute(sql`SELECT id, name FROM customers WHERE ${sql.raw(segment.sqlWhere)}`);
+        matchedCustomers = await db.execute(sql`SELECT id, name FROM customers WHERE (${sql.raw(segment.sqlWhere)}) AND user_id = ${session.user.id}`);
       }
     }
   } catch (e) {
@@ -31,8 +31,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   if (!matchedCustomers) {
-    // Fallback to all customers if no segment or sqlWhere, or if query failed
-    matchedCustomers = await db.execute(sql`SELECT id, name FROM customers`);
+    // Fallback to all customers for THIS USER if no segment or sqlWhere, or if query failed
+    matchedCustomers = await db.execute(sql`SELECT id, name FROM customers WHERE user_id = ${session.user.id}`);
   }
 
   const total = Array.isArray(matchedCustomers) ? matchedCustomers.length : (matchedCustomers.rowCount || 0);
@@ -65,7 +65,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       inserted.push(...res);
     }
     
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || (req.headers.get('host') ? `http://${req.headers.get('host')}` : 'http://localhost:3000');
+    const protocol = req.headers.get('host')?.includes('localhost') ? 'http' : 'https';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || (req.headers.get('host') ? `${protocol}://${req.headers.get('host')}` : 'http://localhost:3000');
     // Dispatch to channel API
     const dispatchAll = async () => {
       try {

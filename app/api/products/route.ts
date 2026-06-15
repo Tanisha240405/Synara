@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { products, users } from '@/lib/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, and, or, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 
 export async function GET() {
@@ -14,8 +14,15 @@ export async function GET() {
   const dbUser = await db.select({ industrySegment: users.industrySegment }).from(users).where(eq(users.id, userId)).limit(1);
   const industrySegment = dbUser[0]?.industrySegment;
 
+  const condition = industrySegment 
+    ? and(
+        or(eq(products.userId, userId), isNull(products.userId)),
+        or(eq(products.industrySegment, industrySegment), isNull(products.industrySegment))
+      )
+    : or(eq(products.userId, userId), isNull(products.userId));
+
   const results = await db.select().from(products)
-    .where(sql`(user_id = ${userId} OR user_id IS NULL) ${industrySegment ? sql`AND (industry_segment = ${industrySegment} OR industry_segment IS NULL)` : sql``}`)
+    .where(condition)
     .orderBy(desc(products.createdAt));
 
   return NextResponse.json({ products: results });

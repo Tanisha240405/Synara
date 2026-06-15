@@ -67,10 +67,24 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const dbUser = await db.select({ industrySegment: users.industrySegment }).from(users).where(eq(users.email, session.user.email)).limit(1);
-    const industrySegment = dbUser[0]?.industrySegment;
+    let industrySegment = dbUser[0]?.industrySegment;
+
+    // Map legacy segments to new rich segments
+    const segmentMap: Record<string, string> = {
+      'apparel': 'E-Commerce & Retail',
+      'electronics': 'E-Commerce & Retail',
+      'other': 'E-Commerce & Retail',
+      'beauty': 'Healthcare & Wellness',
+      'fmcg': 'FMCG & Grocery',
+    };
+    
+    if (industrySegment && segmentMap[industrySegment]) {
+      industrySegment = segmentMap[industrySegment];
+    }
 
     if (!industrySegment || !INDUSTRY_PRODUCTS[industrySegment as keyof typeof INDUSTRY_PRODUCTS]) {
-      return NextResponse.json({ error: 'Valid industry segment required to generate data' }, { status: 400 });
+      // Default to E-Commerce if somehow completely mismatched
+      industrySegment = 'E-Commerce & Retail';
     }
 
     const userId = session.user.id as string;

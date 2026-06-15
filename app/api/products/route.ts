@@ -11,18 +11,8 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const userId = session.user.id;
 
-  const dbUser = await db.select({ industrySegment: users.industrySegment }).from(users).where(eq(users.id, userId)).limit(1);
-  const industrySegment = dbUser[0]?.industrySegment;
-
-  const condition = industrySegment 
-    ? and(
-        or(eq(products.userId, userId), isNull(products.userId)),
-        or(eq(products.industrySegment, industrySegment), isNull(products.industrySegment))
-      )
-    : or(eq(products.userId, userId), isNull(products.userId));
-
   const results = await db.select().from(products)
-    .where(condition)
+    .where(or(eq(products.userId, userId), isNull(products.userId)))
     .orderBy(desc(products.createdAt));
 
   return NextResponse.json({ products: results });

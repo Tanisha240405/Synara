@@ -292,11 +292,11 @@ export default function ProfileForm({ user }: { user: any }) {
               className={`bg-surface-container-lowest border rounded-lg px-md py-sm text-on-surface focus:outline-none focus:border-primary transition-colors appearance-none ${!user.industrySegment ? 'border-primary shadow-[0_0_10px_rgba(124,92,252,0.2)]' : 'border-outline-variant/50'}`}
             >
               <option value="" disabled>Select your industry...</option>
-              <option value="E-Commerce & Retail">E-Commerce & Retail</option>
-              <option value="Travel & Hospitality">Travel & Hospitality</option>
-              <option value="FinTech & Banking">FinTech & Banking</option>
-              <option value="Healthcare & Wellness">Healthcare & Wellness</option>
-              <option value="FMCG & Grocery">FMCG & Grocery</option>
+              <option value="apparel">Apparel & Fashion</option>
+              <option value="beauty">Beauty & Cosmetics</option>
+              <option value="electronics">Consumer Electronics</option>
+              <option value="fmcg">FMCG / Grocery</option>
+              <option value="other">Other</option>
             </select>
           </div>
         </div>

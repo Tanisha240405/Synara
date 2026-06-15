@@ -106,6 +106,9 @@ export async function POST(req: NextRequest) {
         city: faker.location.city(),
         isMockData: true,
         createdAt: faker.date.past({ years: 2 }),
+        lastPurchaseAt: tier === 'gold' ? faker.date.recent({ days: 90 }) : faker.date.recent({ days: 180 }),
+        totalOrders: faker.number.int({ min: 1, max: 10 }),
+        totalSpend: faker.number.int({ min: 1000, max: 50000 }).toString(),
       };
       customerBatch.push(customer);
       generatedCustomers.push(customer);
